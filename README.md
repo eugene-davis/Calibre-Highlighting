@@ -85,6 +85,9 @@ If you would like to Highlight the EPUB version, reorder it to be the first path
    }
 ]
 ```
+2. You can manually specify the path to `calibredb` with the environmental variable `CALIBREDB_BIN`, e.g. `CALIBREDB_BIN=/usr/bin/calibredb python main.py`. By default it will by `calibredb` or for Windows `calibredb.exe`.
+3. You can disable the manual approval of each highlight with the environmental variable `HIGHLIGHT_AUTO_APPLY`, e.g. `HIGHLIGHT_AUTO_APPLY=true python main.py` By default it is enabled.
+4. If you use `HIGHLIGHT_AUTO_APPLY` some or all highlights are missing, try setting `HIGHLIGHT_AUTO_APPLY_DEFAULT_SLEEP` to a value greater than one (second), e.g. `HIGHLIGHT_AUTO_APPLY_DEFAULT_SLEEP=2 HIGHLIGHT_AUTO_APPLY=true main.py`. This will increase the duration between each highlight, in case Calibre cannot keep up.
 
 ### Future Enhancements
 

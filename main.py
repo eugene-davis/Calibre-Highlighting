@@ -6,6 +6,7 @@ import pyautogui
 import pyperclip
 import json
 import re
+import os
 
 
 ## Get highlight book title
@@ -106,6 +107,9 @@ def read_calibre_device_metadata(path):
                 book_id = calibre_item["application_id"]
                 calibre_books_parsed[book_title] = book_id
         return calibre_books_parsed
+    except FileNotFoundError as e:
+        print("File not found, will create an empty one")
+        return {}
     except json.JSONDecodeError as e:
         print("Error decoding JSON:", e)
     except IOError as e:
@@ -115,9 +119,9 @@ def read_calibre_device_metadata(path):
     return None
 
 
-def list_all_books_and_save():
+def list_all_books_and_save(calibredb_bin: str):
     """
-    Retrieves all books from the Calibre library using calibredb.exe, including their IDs, titles, authors, and paths,
+    Retrieves all books from the Calibre library using calibredb, including their IDs, titles, authors, and paths,
     and saves this data to 'calibre_books.json' in the root directory.
 
     Returns:
@@ -130,7 +134,7 @@ def list_all_books_and_save():
         # Using subprocess to call calibredb.exe with the necessary arguments
         result = subprocess.run(
             [
-                "calibredb.exe",
+                calibredb_bin,
                 "list",
                 "--for-machine",
                 "--fields",
@@ -144,7 +148,7 @@ def list_all_books_and_save():
         books = json.loads(result.stdout)
 
         # Writing the books data to a JSON file
-        with open("calibre_books.json", "w", encoding="utf-8") as f:
+        with open("calibre_books.json", "w+", encoding="utf-8") as f:
             json.dump(books, f, indent=4, ensure_ascii=False)
 
         return True
@@ -181,8 +185,21 @@ def find_best_match_book_id_and_save(
         highlights_data = json.load(file)
 
     # # Load Calibre books data
-    with open(calibre_books_path, "r", encoding="utf-8") as file:
-        calibre_books = json.load(file)
+    # TODO: can probably load this from the previous read rather than re-opening it
+    calibre_books = {}
+    try:
+        with open(calibre_books_path, "r", encoding="utf-8") as file:
+            calibre_books = json.load(file)
+    except FileNotFoundError as e:
+        print("File not found, will create an empty one")
+        return {}
+    except json.JSONDecodeError as e:
+        print("Error decoding JSON:", e)
+    except IOError as e:
+        print("Error reading file:", e)
+    except Exception as e:
+        print("An unknown error occurred:", e)
+
 
     # Map titles from Calibre books to their IDs and paths
     title_to_details = {
@@ -236,12 +253,13 @@ def open_book_in_calibre_viewer(book_path):
         print(f"An error occurred: {e}")
 
 
-def perform_text_operations(highlight_texts):
+def perform_text_operations(highlight_texts, highlight_auto_apply: bool = False, highlight_auto_apply_default_sleep: int = 1):
     """
     Interacts with the user to verify if highlights were found correctly and handles user responses.
 
     Args:
         highlight_texts (list): A list of text strings to be verified.
+        highlight_auto_apply (bool): If set highlights are applied without user interaction
 
     Returns:
         list: A list of highlights that were not found according to user input.
@@ -256,10 +274,15 @@ def perform_text_operations(highlight_texts):
         pyautogui.hotkey("enter")  # Paste the text
         pyautogui.hotkey("enter")  # Paste the text
 
-        user_confirmation = pyautogui.confirm(
-            f"Confirm if the highlight was found correctly.\n Highlight {idx+1} of {len(highlight_texts)}",
-            buttons=["Yes", "No"],
-        )
+        user_confirmation: str
+        if highlight_auto_apply:
+            user_confirmation = "Yes"
+            time.sleep(highlight_auto_apply_default_sleep)
+        else:
+            user_confirmation = pyautogui.confirm(
+                f"Confirm if the highlight was found correctly.\n Highlight {idx+1} of {len(highlight_texts)}",
+                buttons=["Yes", "No"],
+            )
 
         if user_confirmation == "Yes":
             pyautogui.keyDown("shiftleft")
@@ -280,6 +303,17 @@ def perform_text_operations(highlight_texts):
 
 
 def main():
+    # Set `.exe` if in windows
+    default_calibre_bin = "calibredb.exe" if os.name == 'nt' else "calibredb"
+    # Get env vars
+
+    # Support linux/mac
+    calibredb_bin = os.environ.get("CALIBREDB_BIN", default_calibre_bin)
+    # Allow auto-applying the highlight, defaults to false
+    highlight_auto_apply: bool = True if os.environ.get("HIGHLIGHT_AUTO_APPLY", "false").upper() == "TRUE" else False
+    # Sleep time between highlights when in autoapprove mode, defaults to 1 second
+    highlight_auto_apply_default_sleep: int = int(os.environ.get("HIGHLIGHT_AUTO_APPLY_DEFAULT_SLEEP", 1))
+
     print(
         """
         This program automates the process of highlighting books in the Calibre library by managing highlights in JSON format.
@@ -333,7 +367,7 @@ def main():
         return
 
     # Retrieve and save all books from the Calibre library
-    if list_all_books_and_save():
+    if list_all_books_and_save(calibredb_bin):
         print("Calibre library books have been saved to 'calibre_books.json'.")
     else:
         print(
@@ -391,7 +425,7 @@ def main():
     print("Highlighting is in progress....")
 
     # Perform text operations
-    highlights_not_found = perform_text_operations(book_highlights)
+    highlights_not_found = perform_text_operations(book_highlights, highlight_auto_apply=highlight_auto_apply, highlight_auto_apply_default_sleep=highlight_auto_apply_default_sleep)
     print("Highlighting complete.")
     if highlights_not_found:
         print("Some highlights were not found:")
